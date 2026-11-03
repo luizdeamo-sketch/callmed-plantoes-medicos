@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Plantões dos médicos · CallMed</title>
+<!-- Consulta de plantões para a equipe de seguros (Amanda), FORA do CRM Aliança (decisão do Luiz, 03/11/2026).
+     Os números vêm ao vivo da base CallMed_Plantoes (Smart Escala) pela função consulta_plantoes(), que só responde
+     para os e-mails da tabela consulta_plantoes_acesso. Esta página não guarda nenhum dado. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+  :root{ --navy:#00125e; --ink:#111827; --muted:#5d6871; --line:#e4e6e2; --bg:#f6f7f5; --gold:#9c7518; --soft:#f7f1e3;
+         --fid:#0f7a4a; --fid-bg:#e5f4ec; --mor:#a15c00; --mor-bg:#fdf0dc; --esf:#7a2e2e; --esf-bg:#f9e6e6; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font:15px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif; color:var(--ink); background:var(--bg); }
+  button,input{ font:inherit; }
+  .wrap{ padding:16px clamp(16px,2.4vw,40px); }
+  header{ background:var(--navy); color:#fff; }
+  header .wrap{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding-top:14px; padding-bottom:14px; }
+  header h1{ margin:0; font-size:clamp(18px,1.6vw,24px); font-weight:700; }
+  header small{ opacity:.8; }
+  header .dir{ margin-left:auto; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .btn{ border:1px solid var(--line); background:#fff; color:var(--ink); border-radius:10px; padding:8px 14px; cursor:pointer; }
+  .btn:hover{ border-color:var(--gold); }
+  .btn.ouro{ background:var(--gold); border-color:var(--gold); color:#fff; }
+  header .btn{ background:transparent; color:#fff; border-color:rgba(255,255,255,.4); }
+  /* login */
+  #login{ min-height:100vh; display:grid; place-items:center; padding:16px; }
+  .cartao{ background:#fff; border:1px solid var(--line); border-radius:16px; padding:28px; width:min(420px,100%); box-shadow:0 10px 30px rgba(0,0,0,.06); }
+  .cartao h1{ margin:0 0 4px; font-size:22px; color:var(--navy); }
+  .cartao p{ margin:0 0 18px; color:var(--muted); }
+  label{ display:block; font-size:13px; color:var(--muted); margin:12px 0 4px; }
+  input[type=email],input[type=password],input[type=search]{ width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+  input:focus{ outline:2px solid var(--gold); outline-offset:1px; }
+  .cartao .btn.ouro{ width:100%; margin-top:16px; padding:11px; }
+  .link{ background:none; border:0; color:var(--gold); cursor:pointer; padding:0; margin-top:12px; font-size:14px; }
+  .msg{ margin-top:12px; font-size:14px; }
+  .msg.erro{ color:#b42318; } .msg.ok{ color:var(--fid); }
+  /* consulta */
+  .chips{ display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr)); gap:12px; margin:4px 0 16px; }
+  .chip{ text-align:left; background:#fff; border:1px solid var(--line); border-radius:14px; padding:14px 16px; cursor:pointer; }
+  .chip b{ display:block; font-size:clamp(22px,2vw,30px); color:var(--ink); }
+  .chip span{ color:var(--muted); font-size:13.5px; }
+  .chip.ativo{ border-color:var(--gold); box-shadow:inset 0 0 0 1px var(--gold); background:var(--soft); }
+  .barra{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+  .barra input{ flex:1 1 280px; }
+  .barra .conta{ color:var(--muted); font-size:14px; }
+  .tabela{ background:#fff; border:1px solid var(--line); border-radius:14px; overflow:auto; }
+  table{ width:100%; border-collapse:collapse; min-width:900px; }
+  th,td{ padding:10px 12px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+  td.nome{ white-space:normal; min-width:220px; font-weight:600; }
+  th{ position:sticky; top:0; background:#fafaf8; font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); cursor:pointer; user-select:none; }
+  th[data-ord].asc::after{ content:" ▲"; } th[data-ord].desc::after{ content:" ▼"; }
+  td.n{ text-align:right; font-variant-numeric:tabular-nums; } th.n{ text-align:right; }
+  tr:hover td{ background:#fcfbf7; }
+  .tag{ display:inline-block; padding:2px 9px; border-radius:999px; font-size:12.5px; font-weight:600; }
+  .tag.fidelizado{ background:var(--fid-bg); color:var(--fid); } .tag.morno{ background:var(--mor-bg); color:var(--mor); } .tag.esfriando{ background:var(--esf-bg); color:var(--esf); }
+  .wa{ color:var(--fid); text-decoration:none; font-weight:600; }
+  .nota{ color:var(--muted); font-size:13px; margin-top:12px; }
+  .vazio{ padding:28px; text-align:center; color:var(--muted); }
+  [hidden]{ display:none !important; }
+</style>
+</head>
+<body>
+
+<section id="login" hidden>
+  <form class="cartao" id="f-login">
+    <h1>Plantões dos médicos</h1>
+    <p>CallMed · consulta da equipe de seguros</p>
+    <label for="l-email">E-mail</label>
+    <input id="l-email" type="email" autocomplete="username" required>
+    <label for="l-senha">Senha</label>
+    <input id="l-senha" type="password" autocomplete="current-password" required>
+    <button class="btn ouro" type="submit">Entrar</button>
+    <button class="link" type="button" id="b-esqueci">Esqueci a senha</button>
+    <div class="msg" id="l-msg" role="status"></div>
+  </form>
+</section>
+
+<section id="nova-senha" hidden>
+  <div id="login2" style="min-height:100vh;display:grid;place-items:center;padding:16px">
+    <form class="cartao" id="f-senha">
+      <h1>Crie a sua senha</h1>
+      <p>Pelo menos 10 caracteres.</p>
+      <label for="n-senha">Nova senha</label>
+      <input id="n-senha" type="password" autocomplete="new-password" minlength="10" required>
+      <button class="btn ouro" type="submit">Salvar senha</button>
+      <div class="msg" id="n-msg" role="status"></div>
+    </form>
+  </div>
+</section>
+
+<div id="app" hidden>
+  <header><div class="wrap">
+    <div><h1>Plantões dos médicos</h1><small id="h-atual">CallMed · dados ao vivo do Smart Escala</small></div>
+    <div class="dir"><small id="h-quem"></small><button class="btn" id="b-recarregar" type="button">Atualizar</button><button class="btn" id="b-sair" type="button">Sair</button></div>
+  </div></header>
+  <main class="wrap">
+    <div class="chips" id="chips"></div>
+    <div class="barra">
+      <input id="busca" type="search" placeholder="Buscar por nome ou CRM" aria-label="Buscar por nome ou CRM">
+      <span class="conta" id="conta"></span>
+      <button class="btn" id="b-csv" type="button">Baixar planilha (CSV)</button>
+    </div>
+    <div class="tabela"><table>
+      <thead><tr>
+        <th data-ord="nome">Médico</th><th data-ord="crm">CRM</th><th data-ord="grupo">Grupo</th>
+        <th class="n" data-ord="plantoes_90d">90 dias</th><th class="n" data-ord="plantoes_2026">Em 2026</th><th class="n" data-ord="valor_2026">Valor 2026</th>
+        <th data-ord="ultimo_plantao">Último plantão</th><th class="n" data-ord="agendados_30d">Agendados 30 dias</th><th data-ord="local_principal">Onde mais atua</th><th>Contato</th>
+      </tr></thead>
+      <tbody id="linhas"></tbody>
+    </table></div>
+    <p class="nota"><b>Fidelizado</b>: mais de 20 plantões trabalhados nos últimos 90 dias. <b>Morno</b>: 11 a 20. <b>Esfriando</b>: trabalhou em 2026, fez até 10 nos 90 dias e está há mais de 30 dias sem plantão.
+      Conta só plantão confirmado, sem troca, falta ou função administrativa. "Agendados" são os plantões já escalados para os próximos 30 dias.</p>
+  </main>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  const sb = supabase.createClient('https://nykkxupveodbqldukejo.supabase.co', 'sb_publishable_RASBoHZC0FuyoMiVP4nBew_qAR4gLD8',
+    { auth: { storageKey: 'callmed-plantoes-medicos-auth', persistSession: true, detectSessionInUrl: true } });   // login próprio: não derruba Smart Escala/Flow no mesmo navegador
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  const brl = (v) => Number(v || 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL', maximumFractionDigits:0 });
+  const dataBr = (d) => d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
+  const hoje = new Date(); hoje.setHours(12,0,0,0);
+  const diasDesde = (d) => d ? Math.round((hoje - new Date(d + 'T12:00:00')) / 864e5) : 9999;
+  const semAcento = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+  let DADOS = [], FILTRO = 'todos', ORD = { campo:'plantoes_90d', dir:-1 };
+  const GRUPOS = [
+    ['todos', 'Todos os médicos', () => true],
+    ['fidelizado', 'Fidelizados · mais de 20 em 90 dias', (r) => r.grupo === 'fidelizado'],
+    ['morno', 'Mornos · 11 a 20 em 90 dias', (r) => r.grupo === 'morno'],
+    ['esfriando', 'Esfriando · sumiram há mais de 30 dias', (r) => r.grupo === 'esfriando'],
+    ['agendados', 'Com plantão nos próximos 30 dias', (r) => r.agendados_30d > 0],
+  ];
+  const ROTULO = { fidelizado:'Fidelizado', morno:'Morno', esfriando:'Esfriando' };
+
+  function telas(qual){ $('login').hidden = qual !== 'login'; $('nova-senha').hidden = qual !== 'senha'; $('app').hidden = qual !== 'app'; }
+
+  async function carregar(){
+    $('linhas').innerHTML = '<tr><td colspan="10" class="vazio">Carregando os plantões…</td></tr>';
+    const { data, error } = await sb.rpc('consulta_plantoes');
+    if (error){
+      $('linhas').innerHTML = `<tr><td colspan="10" class="vazio">${/acesso/i.test(error.message) ? 'Este e-mail não tem acesso à consulta. Fale com o Luiz.' : 'Não consegui carregar agora: ' + esc(error.message)}</td></tr>`;
+      return;
+    }
+    DADOS = (data || []).map((r) => Object.assign(r, {
+      grupo: r.nivel || (r.plantoes_2026 > 0 && diasDesde(r.ultimo_plantao) > 30 ? 'esfriando' : ''),
+      busca: semAcento(r.nome) + ' ' + String(r.crm || '').replace(/\D/g, ''),
+    }));
+    $('h-atual').textContent = 'CallMed · dados ao vivo do Smart Escala · carregado às ' + new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+    desenhar();
+  }
+
+  function desenhar(){
+    $('chips').innerHTML = GRUPOS.map(([k, nome, f]) => `<button type="button" class="chip${FILTRO === k ? ' ativo' : ''}" data-f="${k}"><b>${DADOS.filter(f).length}</b><span>${esc(nome)}</span></button>`).join('');
+    const termo = semAcento($('busca').value.trim()), dig = termo.replace(/\D/g, '');
+    const f = GRUPOS.find((g) => g[0] === FILTRO)[2];
+    let lista = DADOS.filter((r) => f(r) && (!termo || r.busca.includes(termo) || (dig && r.busca.includes(dig))));
+    const c = ORD.campo;
+    lista.sort((a, b) => { const x = a[c], y = b[c]; if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+      return (typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'pt-BR')) * ORD.dir; });
+    document.querySelectorAll('th[data-ord]').forEach((th) => th.className = (th.classList.contains('n') ? 'n ' : '') + (th.dataset.ord === c ? (ORD.dir > 0 ? 'asc' : 'desc') : ''));
+    $('conta').textContent = lista.length + (lista.length === 1 ? ' médico' : ' médicos');
+    $('linhas').innerHTML = lista.length ? lista.map((r) => {
+      const fone = String(r.celular || '').replace(/\D/g, ''), wa = fone.length >= 10 ? (fone.length <= 11 ? '55' + fone : fone) : '';
+      return `<tr><td class="nome">${esc(r.nome)}</td><td>${esc(r.crm || '—')}${r.uf_crm ? '/' + esc(r.uf_crm) : ''}</td>
+        <td>${r.grupo ? `<span class="tag ${r.grupo}">${ROTULO[r.grupo]}</span>` : ''}</td>
+        <td class="n">${r.plantoes_90d}</td><td class="n">${r.plantoes_2026}</td><td class="n">${brl(r.valor_2026)}</td>
+        <td>${dataBr(r.ultimo_plantao)}${r.ultimo_plantao ? ` <small style="color:var(--muted)">(${diasDesde(r.ultimo_plantao)} d)</small>` : ''}</td>
+        <td class="n">${r.agendados_30d || ''}</td><td>${esc(r.local_principal || '—')}</td>
+        <td>${wa ? `<a class="wa" href="https://wa.me/${wa}" target="_blank" rel="noopener">WhatsApp</a>` : '—'}</td></tr>`;
+    }).join('') : '<tr><td colspan="10" class="vazio">Nenhum médico com esse filtro.</td></tr>';
+  }
+
+  function baixarCsv(){
+    const cab = ['Médico','CRM','UF','Grupo','Plantões 90 dias','Plantões 2026','Valor 2026','Último plantão','Agendados 30 dias','Onde mais atua','Celular'];
+    const q = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const f = GRUPOS.find((g) => g[0] === FILTRO)[2];
+    const linhas = DADOS.filter(f).map((r) => [r.nome, r.crm, r.uf_crm, ROTULO[r.grupo] || '', r.plantoes_90d, r.plantoes_2026, String(r.valor_2026).replace('.', ','), dataBr(r.ultimo_plantao), r.agendados_30d, r.local_principal, r.celular].map(q).join(';'));
+    const blob = new Blob(['﻿' + [cab.map(q).join(';')].concat(linhas).join('\r\n')], { type:'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'plantoes-medicos-' + FILTRO + '-' + new Date().toISOString().slice(0, 10) + '.csv'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+
+  $('chips').addEventListener('click', (e) => { const b = e.target.closest('[data-f]'); if (b){ FILTRO = b.dataset.f; desenhar(); } });
+  $('busca').addEventListener('input', desenhar);
+  document.querySelector('thead').addEventListener('click', (e) => { const th = e.target.closest('th[data-ord]'); if (!th) return;
+    ORD = { campo: th.dataset.ord, dir: ORD.campo === th.dataset.ord ? -ORD.dir : (th.classList.contains('n') ? -1 : 1) }; desenhar(); });
+  $('b-csv').addEventListener('click', baixarCsv);
+  $('b-recarregar').addEventListener('click', carregar);
+  $('b-sair').addEventListener('click', async () => { await sb.auth.signOut({ scope:'local' }); DADOS = []; telas('login'); });
+
+  $('f-login').addEventListener('submit', async (e) => {
+    e.preventDefault(); const m = $('l-msg'); m.className = 'msg'; m.textContent = 'Entrando…';
+    const { error } = await sb.auth.signInWithPassword({ email: $('l-email').value.trim().toLowerCase(), password: $('l-senha').value });
+    if (error){ m.className = 'msg erro'; m.textContent = 'E-mail ou senha não conferem.'; return; }
+    m.textContent = '';
+  });
+  $('b-esqueci').addEventListener('click', async () => {
+    const m = $('l-msg'), email = $('l-email').value.trim().toLowerCase();
+    if (!email){ m.className = 'msg erro'; m.textContent = 'Escreva o seu e-mail acima e clique de novo.'; return; }
+    await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    m.className = 'msg ok'; m.textContent = 'Se o e-mail tiver acesso, chega um link para criar a senha (confira o spam).';
+  });
+  $('f-senha').addEventListener('submit', async (e) => {
+    e.preventDefault(); const m = $('n-msg');
+    const { error } = await sb.auth.updateUser({ password: $('n-senha').value });
+    if (error){ m.className = 'msg erro'; m.textContent = 'Não consegui salvar: ' + error.message; return; }
+    telas('app'); carregar();
+  });
+
+  sb.auth.onAuthStateChange((ev, s) => {
+    if (ev === 'PASSWORD_RECOVERY'){ telas('senha'); return; }
+    if (s && s.user){ $('h-quem').textContent = s.user.email; if ($('app').hidden && $('nova-senha').hidden){ telas('app'); carregar(); } }
+    else if (ev === 'SIGNED_OUT' || ev === 'INITIAL_SESSION') telas('login');
+  });
+})();
+</script>
+</body>
+</html>
