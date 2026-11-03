@@ -82,10 +82,15 @@
   <div id="login2" style="min-height:100vh;display:grid;place-items:center;padding:16px">
     <form class="cartao" id="f-senha">
       <h1>Crie a sua senha</h1>
-      <p>Pelo menos 10 caracteres.</p>
+      <p id="n-ajuda">Pelo menos 10 caracteres.</p>
+      <div id="n-cod-bloco" hidden>
+        <label for="n-cod">Código do e-mail (6 números)</label>
+        <input id="n-cod" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" pattern="[0-9]{6,8}">
+      </div>
       <label for="n-senha">Nova senha</label>
       <input id="n-senha" type="password" autocomplete="new-password" minlength="10" required>
       <button class="btn ouro" type="submit">Salvar senha</button>
+      <button class="link" type="button" id="b-voltar">Voltar para a entrada</button>
       <div class="msg" id="n-msg" role="status"></div>
     </form>
   </div>
@@ -204,11 +209,21 @@
   $('b-esqueci').addEventListener('click', async () => {
     const m = $('l-msg'), email = $('l-email').value.trim().toLowerCase();
     if (!email){ m.className = 'msg erro'; m.textContent = 'Escreva o seu e-mail acima e clique de novo.'; return; }
-    await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
-    m.className = 'msg ok'; m.textContent = 'Se o e-mail tiver acesso, chega um link para criar a senha (confira o spam).';
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    if (error){ m.className = 'msg erro'; m.textContent = /rate|seconds|segundos/i.test(error.message) ? 'Já mandamos um e-mail há pouco. Espere 1 minuto e tente de novo.' : 'Não consegui mandar o e-mail: ' + error.message; return; }
+    // o e-mail corporativo (Outlook) costuma abrir o link sozinho e gastar o acesso: por isso a senha é criada aqui, com o código do e-mail
+    EMAIL_REC = email; telas('senha'); $('n-cod-bloco').hidden = false; $('n-cod').required = true;
+    $('n-ajuda').textContent = 'Mandamos um e-mail para ' + email + ' (confira o spam). Digite aqui o código de 6 números que veio nele e a senha nova, com pelo menos 10 caracteres.';
+    $('n-cod').focus();
   });
+  let EMAIL_REC = '';
+  $('b-voltar').addEventListener('click', () => { $('n-cod-bloco').hidden = true; $('n-cod').required = false; $('n-msg').textContent = ''; telas('login'); });
   $('f-senha').addEventListener('submit', async (e) => {
-    e.preventDefault(); const m = $('n-msg');
+    e.preventDefault(); const m = $('n-msg'); m.className = 'msg'; m.textContent = 'Salvando…';
+    if (!$('n-cod-bloco').hidden){
+      const v = await sb.auth.verifyOtp({ email: EMAIL_REC, token: $('n-cod').value.trim(), type: 'recovery' });
+      if (v.error){ m.className = 'msg erro'; m.textContent = 'Código não confere ou já venceu. Volte e peça outro e-mail.'; return; }
+    }
     const { error } = await sb.auth.updateUser({ password: $('n-senha').value });
     if (error){ m.className = 'msg erro'; m.textContent = 'Não consegui salvar: ' + error.message; return; }
     telas('app'); carregar();
